@@ -1,0 +1,108 @@
+以下は、mbedtlsでサーバー証明書の検証をするC言語のコード例です。
+
+```c
+#include "mbedtls/net.h"
+#include "mbedtls/ssl.h"
+#include "mbedtls/error.h"
+
+int main()
+{
+    mbedtls_net_context server_fd;
+    mbedtls_ssl_context ssl;
+    mbedtls_ssl_config conf;
+    mbedtls_x509_crt cacert;
+
+    // サーバーのアドレスとポートを設定する
+    const char *server_name = "example.com";
+    const char *server_port = "443";
+
+    // CA証明書をロードする
+    mbedtls_x509_crt_init(&cacert);
+    int ret = mbedtls_x509_crt_parse_file(&cacert, "ca-cert.pem");
+    if (ret != 0) {
+        printf("Failed to load CA certificate.\n");
+        goto exit;
+    }
+
+    // mbedtlsの初期化
+    mbedtls_net_init(&server_fd);
+    mbedtls_ssl_init(&ssl);
+    mbedtls_ssl_config_init(&conf);
+
+    // サーバーに接続する
+    ret = mbedtls_net_connect(&server_fd, server_name,
+                              server_port, MBEDTLS_NET_PROTO_TCP);
+    if (ret != 0) {
+        printf("Failed to connect to server.\n");
+        goto exit;
+    }
+
+    // mbedtlsのSSL設定
+    ret = mbedtls_ssl_config_defaults(&conf, MBEDTLS_SSL_IS_CLIENT,
+                                      MBEDTLS_SSL_TRANSPORT_STREAM,
+                                      MBEDTLS_SSL_PRESET_DEFAULT);
+    if (ret != 0) {
+        printf("Failed to set SSL configuration defaults.\n");
+        goto exit;
+    }
+
+    mbedtls_ssl_conf_ca_chain(&conf, &cacert, NULL);
+
+    ret = mbedtls_ssl_setup(&ssl, &conf);
+    if (ret != 0) {
+        printf("Failed to set up SSL context.\n");
+        goto exit;
+    }
+
+    mbedtls_ssl_set_hostname(&ssl, server_name);
+
+    // SSLハンドシェイクを実行する
+    while ((ret = mbedtls_ssl_handshake(&ssl)) != 0) {
+        if (ret != MBEDTLS_ERR_SSL_WANT_READ
+            && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
+            printf("Failed to perform SSL handshake. Error code: %d\n", ret);
+            goto exit;
+        }
+    }
+
+    // サーバーの証明書を取得する
+    mbedtls_x509_crt *server_cert = mbedtls_ssl_get_peer_cert(&ssl);
+    if (server_cert == NULL) {
+        printf("Failed to retrieve server certificate.\n");
+        goto exit;
+    }
+
+    // サーバー証明書の検証を行う
+    ret = mbedtls_ssl_get_verify_result(&ssl);
+    if (ret != 0) {
+        char error_buf[100];
+        mbedtls_x509_crt_verify_info(error_buf, sizeof(error_buf), "", ret);
+        printf("Failed to verify server certificate. Verification result: %s\n",
+               error_buf);
+        goto exit;
+    }
+
+    printf("Server certificate verified successfully.\n");
+
+exit:
+    mbedtls_x509_crt_free(&cacert);
+    mbedtls_ssl_close_notify(&ssl);
+    mbedtls_ssl_free(&ssl);
+    mbedtls_ssl_config_free(&conf);
+    mbedtls_net_free(&server_fd);
+
+    return 0;
+}
+```
+
+上記のコードは、以下の手順で動作します。
+
+1. CA証明書をロードする。
+2. サーバーに接続する。
+3. mbedtlsのSSL設定を行う。
+4. SSLハンドシェイクを実行する。
+5. サーバーの証明書を取得する。
+6. サーバー証明書の検証を行う。
+7. プログラムの終了処理を行う。
+
+SSL設定や証明書検証のコード部分は、mbedtlsの公式ドキュメントを参考にしています。また、エラー処理が必要な箇所では、goto文を用いてプログラムを終了させるようにしています。
